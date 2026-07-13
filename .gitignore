@@ -1,0 +1,31 @@
+# Referencias de contexto / revisión (locales, no se suben al repo)
+docs
+REVIEW_CHECKLIST.md
+
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

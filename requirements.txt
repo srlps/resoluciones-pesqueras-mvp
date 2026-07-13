@@ -1,0 +1,30 @@
+# Orquestación de agente y modelo
+langchain>=0.3
+langchain-community
+langsmith
+
+# Proveedores de modelo — cascada de ingesta
+langchain-google-genai   # Gemini 2.5 Flash — clasificador / escudo de costos
+langchain-mistralai      # Mistral Large — extractor estructurado
+
+# MCP: servidor de tools + cliente para el agente
+fastmcp
+langchain-mcp-adapters
+
+# Web: API + servido de HTML estático
+fastapi
+uvicorn[standard]
+
+# Ingesta y parseo de PDFs
+httpx
+pdfplumber
+
+# Persistencia (PostgreSQL externo)
+SQLAlchemy
+psycopg2-binary
+
+# Configuración
+python-dotenv
+
+# Tests
+pytest

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asistente de Actualizaciones Pesqueras — MVP</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Asistente de Actualizaciones Pesqueras</h1>
+    <p>PRODUCE · Perú — MVP de extracción estructurada de normativas</p>
+  </header>
+
+  <main>
+    <section id="procesar">
+      <h2>Procesar resolución</h2>
+      <form id="form-procesar">
+        <label>
+          N° de resolución
+          <input type="text" id="nro_resolucion" placeholder="R.M. 234-2025-PRODUCE" required />
+        </label>
+        <label>
+          Fecha de publicación
+          <input type="date" id="fecha_publicacion" />
+        </label>
+        <label>
+          Texto de la resolución
+          <textarea id="texto" rows="8" placeholder="Pega aquí el texto de la resolución..." required></textarea>
+        </label>
+        <button type="submit">Procesar</button>
+      </form>
+      <div id="resultado" class="resultado"></div>
+    </section>
+
+    <section id="timeline">
+      <h2>Línea de tiempo de normas</h2>
+      <button id="btn-refrescar-normas">Actualizar</button>
+      <table id="tabla-normas">
+        <thead>
+          <tr>
+            <th>Resolución</th><th>Objeto</th><th>Acción</th><th>Lugar</th>
+            <th>Estado</th><th>Cambio</th><th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="dlq">
+      <h2>Dead Letter Queue — revisión humana</h2>
+      <button id="btn-refrescar-dlq">Actualizar</button>
+      <table id="tabla-dlq">
+        <thead>
+          <tr><th>ID</th><th>Motivo</th><th>Hash PDF</th><th>Fecha</th><th>Acción</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
