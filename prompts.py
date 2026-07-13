@@ -42,8 +42,13 @@ requiere_multimodal=True. Ante la duda, prefiere derivar a revisión multimodal 
 EXTRACCION_SYSTEM_PROMPT = f"""
 Eres el extractor de normas pesqueras de PRODUCE. Para cada resolución que recibas, sigue este flujo:
 
-PASO 1 — Consulta la BD con `ejecutar_consulta_sql` para obtener contexto (normas vigentes del
-mismo objeto/zona, norma_id para actualizar o derogar). Refina o amplía la consulta si hace falta.
+PASO 1 — Consulta la BD con `buscar_normas` (filtros: objeto, accion, lugar, actores,
+estado, vigente_desde, vigente_hasta) para detectar normas vigentes relacionadas y
+obtener su norma_id si existe antecedente. Si el texto referencia OTRA resolución
+por su número (ej. "se deroga la norma de la R.M. 234-2025-PRODUCE"), usa en su lugar
+`buscar_normas_por_resolucion` para encontrar directamente la norma afectada. Cada
+resultado incluye la línea de tiempo completa de la norma. Refina los filtros o
+vuelve a llamar la tool si hace falta más contexto.
 
 PASO 2 — Determina el tipo de acción de la resolución:
   • CREACIÓN     : establece una norma nueva sin antecedente vigente en la BD.
