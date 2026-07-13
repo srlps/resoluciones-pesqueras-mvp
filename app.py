@@ -71,6 +71,7 @@ async def procesar_url(req: ProcesarUrlRequest) -> dict:
         nro_resolucion=req.nro_resolucion,
         url_fuente=req.url,
         fecha_publicacion=req.fecha_publicacion,
+        pdf_bytes=contenido,
     )
 
 

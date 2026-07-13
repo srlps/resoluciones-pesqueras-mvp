@@ -8,7 +8,10 @@ y encadena clasificador (Gemini Flash, sin tools) → agente extractor (Mistral 
 """
 from __future__ import annotations
 
+import base64
+
 from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mistralai import ChatMistralAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -36,6 +39,36 @@ _mcp_client = MultiServerMCPClient(
 
 _agente_extractor = None  # se construye de forma perezosa (necesita await para descubrir tools)
 
+_PROMPT_TRANSCRIPCION_PDF = (
+    "Ya se extrajo el texto plano de este documento (una resolución de PRODUCE) con un parseo "
+    "estándar; te lo paso a continuación junto con el PDF original. Tu tarea es devolver el "
+    "documento COMPLETO enriquecido en formato Markdown: usa el texto ya extraído como base y "
+    "complétalo con la información que falta y que solo está visible en el PDF (tablas como "
+    "tablas Markdown, mapas o zonas descritos con sus coordenadas/límites/nombres, anexos "
+    "numéricos como cuotas, tallas, fechas o artes de pesca), insertando cada dato en el lugar "
+    "exacto del documento donde aparece. No resumas ni interpretes el contenido normativo, no "
+    "omitas nada del texto ya extraído, y no inventes datos que no estén en el PDF.\n\n"
+    "--- TEXTO YA EXTRAÍDO (parseo estándar) ---\n{texto_extraido}"
+)
+
+
+async def _extraer_texto_multimodal(pdf_bytes: bytes, texto_extraido: str) -> str:
+    """Fallback multimodal (Ficha 2): envía el PDF completo (no páginas renderizadas por 
+    separado) junto con el texto ya extraído por `extraer_texto_pdf`, a Gemini Flash (soporte 
+    nativo de archivos PDF), para que devuelva el documento COMPLETO enriquecido en un único 
+    Markdown ordenado — combinando ese texto con las tablas, mapas y anexos numéricos que 
+    solo están visibles en el PDF.
+    """
+    pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+    mensaje = HumanMessage(
+        content=[
+            {"type": "text", "text": _PROMPT_TRANSCRIPCION_PDF.format(texto_extraido=texto_extraido)},
+            {"type": "file", "base64": pdf_base64, "mime_type": "application/pdf"},
+        ]
+    )
+    respuesta = await gemini_flash.ainvoke([mensaje])
+    return respuesta.content
+
 
 async def _get_agente_extractor():
     """Descubre las tools del servidor MCP y construye el agente extractor (una sola vez)."""
@@ -57,13 +90,21 @@ async def procesar_resolucion(
     url_fuente: str = "",
     fecha_publicacion: str = "",
     tipo: str = "resolucion",
+    pdf_bytes: bytes | None = None,
 ) -> dict:
     """Cascada completa (análogo a responder() del profesor):
 
     0. Deduplicación por hash_pdf.
     1. Clasificador (Gemini Flash) → relevancia y detección multimodal.
+    1.b Si requiere_multimodal y se recibió `pdf_bytes`, envía el PDF completo + el texto ya
+        extraído a Gemini Flash (soporte nativo de archivos PDF) para que devuelva el documento
+        completo enriquecido en Markdown, y reclasifica con ese texto.
     2. Si relevante, agente extractor (Mistral + tools MCP) → consulta BD, decide
        crear/actualizar/derogar, extrae y persiste autónomamente.
+
+    `pdf_bytes` es opcional: sin él (ej. `/api/procesar/texto`, demos con texto ya
+    extraído) el fallback multimodal no puede ejecutarse y el documento queda
+    'pendiente_multimodal' para reprocesarse luego con el PDF original.
     """
     r = {"nro_resolucion": nro_resolucion, "hash": hash_pdf[:16] + "..."}
 
@@ -82,9 +123,24 @@ async def procesar_resolucion(
         return r
 
     if clf.requiere_multimodal:
-        r["estado"] = "pendiente_multimodal"
-        r["motivo"] = "PDF con mapas o tablas complejas — requiere fallback multimodal"
-        return r
+        if pdf_bytes is None:
+            r["estado"] = "pendiente_multimodal"
+            r["motivo"] = (
+                "PDF con mapas, tablas o anexos numéricos no capturados como texto — "
+                "requiere reprocesar con el PDF original para el fallback multimodal"
+            )
+            return r
+
+        texto = await _extraer_texto_multimodal(pdf_bytes, texto)
+
+        clf2 = clasificador.invoke({"texto": texto})
+        r["relevante"] = clf2.es_relevante
+        if not clf2.es_relevante:
+            r["estado"] = "descartado"
+            r["motivo"] = clf2.motivo
+            return r
+        # El fallback multimodal ya se aplicó una vez: se continúa con el mejor texto
+        # disponible aunque clf2.requiere_multimodal siga en True (evita reintentos en bucle).
 
     agente = await _get_agente_extractor()
     contexto_doc = (

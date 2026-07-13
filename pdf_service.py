@@ -2,7 +2,9 @@
 
 Descarga el PDF de PRODUCE, calcula su hash SHA-256 (clave de idempotencia) y
 extrae el texto con pdfplumber. Si el parseo estándar no basta (mapas, tablas
-complejas), el llamador debe activar el fallback multimodal fuera de este módulo.
+complejas), el llamador (agent.py) debe activar el fallback multimodal enviando
+el PDF completo (bytes) a un modelo con soporte nativo de archivos PDF; ese
+envío queda fuera de este módulo, que solo maneja el PDF, sin llamar a ningún LLM.
 """
 from __future__ import annotations
 

@@ -69,6 +69,33 @@ explícitamente.** El MVP es intencionalmente plano — es para aprendizaje/demo
   evitando que el agente tenga que adivinar objeto/zona para encontrar el antecedente.
   Reutiliza `_formatear_norma_con_historial()`. Actualizadas referencias en las
   `instructions` del servidor y en `prompts.py` (PASO 1).
+- **2026-07-13** — `prompts.py`: corregido `CLASIFICACION_PROMPT` para no mezclar
+  relevancia y multimodalidad. Antes, cualquier dato multimodal faltante forzaba
+  `es_relevante=True`; ahora `es_relevante` se decide primero por el propósito
+  regulatorio completo del documento (puede ser `False` aunque falten tablas/mapas
+  si es evidente que el documento es ajeno a la pesca). `requiere_multimodal=True`
+  solo aplica junto con `es_relevante=True`, en dos escenarios: (1) relevancia aún
+  no concluida por falta de datos multimodales, o (2) relevancia ya confirmada pero
+  faltan datos multimodales que el extractor necesita (cuotas, tallas, coordenadas).
+- **2026-07-13** — Implementado el fallback multimodal end-to-end (antes solo
+  marcaba `pendiente_multimodal` sin actuar). `agent.py`: nueva
+  `_extraer_texto_multimodal(pdf_bytes, texto_extraido)` envía el **PDF completo**
+  (no páginas renderizadas por separado) junto con el texto ya extraído por
+  `extraer_texto_pdf`, a Gemini Flash usando su soporte nativo de archivos PDF
+  (content block `{"type": "file", "base64": ..., "mime_type": "application/pdf"}`),
+  pidiendo que devuelva el documento **completo enriquecido en un único Markdown
+  ordenado** (usa el texto ya extraído como base y lo completa con tablas/mapas/
+  anexos numéricos que solo están visibles en el PDF, insertados en el lugar exacto
+  donde aparecen) en vez de una transcripción separada a concatenar;
+  `procesar_resolucion()` ahora acepta `pdf_bytes: bytes | None = None` — si
+  `clf.requiere_multimodal` y hay `pdf_bytes`, reemplaza `texto` por el Markdown
+  enriquecido y reclasifica una sola vez (sin loop) antes de continuar al agente
+  extractor; sin `pdf_bytes` (ej. endpoint de solo texto) se mantiene el estado
+  `pendiente_multimodal` como antes. `app.py`: el endpoint `/api/procesar/url`
+  ahora pasa `pdf_bytes=contenido` para habilitar el fallback (el endpoint
+  `/api/procesar/texto`, sin PDF, no puede activarlo). `pdf_service.py` y
+  `requirements.txt` quedan sin cambios (no se necesita rasterizar páginas ni
+  PyMuPDF; Gemini procesa el PDF directamente).
 
 > Actualiza esta sección con una entrada nueva cada vez que completes un cambio
 > estructural o funcional relevante (nuevo archivo, cambio de contrato, nueva feature).

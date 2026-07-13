@@ -29,11 +29,24 @@ NO RELEVANTE: el documento no tiene efecto regulatorio sobre la actividad pesque
 agricultura, comunicados sin efecto normativo, licitaciones, nombramientos, convenios sin impacto
 regulatorio directo en pesca).
 
-IMPORTANTE — TEXTO EXTRAÍDO DE PDF: puede estar incompleto (tablas, gráficos, mapas y anexos
-numéricos frecuentemente no se extraen como texto). Si el texto referencia tablas/anexos ausentes,
-o si claramente debería contener valores numéricos que no aparecen: marca es_relevante=True y
-requiere_multimodal=True. Ante la duda, prefiere derivar a revisión multimodal antes que descartar
-(el descarte es irreversible).""",
+IMPORTANTE — RELEVANCIA Y MULTIMODAL SON INDEPENDIENTES: decide primero es_relevante evaluando el
+propósito regulatorio completo del documento, sin que te lo impida la falta de tablas/mapas/anexos
+numéricos. Si es evidente que el documento entero está enfocado en algo que no es actividad pesquera
+(minería, agricultura, licitaciones, nombramientos, etc.), marca es_relevante=False aunque falten
+tablas o valores numéricos por extraer del PDF — eso no lo vuelve candidato a revisión multimodal.
+
+requiere_multimodal=True aplica en dos escenarios distintos, ambos con es_relevante=True:
+1. AÚN NO puedes concluir si el documento es ajeno a la pesca: el texto extraído está incompleto
+   (tablas, gráficos, mapas o anexos numéricos ausentes) y esa información faltante es justo la
+   que definiría si el documento regula o no actividad pesquera. Ante la duda, prefieres esa
+   revisión antes que descartar (el descarte es irreversible).
+2. YA CONFIRMASTE que el documento es relevante, pero el texto extraído no trae los datos que el
+   siguiente modelo necesitará para extraer la norma (cuotas, tallas, coordenadas, fechas, artes de
+   pesca u otros valores que solo están en tablas/mapas/anexos no capturados como texto). En este
+   caso el siguiente LLM solo analizará texto, así que sin esos datos no podría extraer la norma
+   con certeza.
+Si el documento es claramente ajeno a la pesca (es_relevante=False), NUNCA marques
+requiere_multimodal=True: la falta de datos multimodales no aplica a documentos descartados.""",
         ),
         ("human", "Clasifica este fragmento de resolución PRODUCE:\n\n{texto}"),
     ]
