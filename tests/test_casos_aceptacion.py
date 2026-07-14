@@ -33,6 +33,19 @@ ante un 429 de Mistral/Gemini con espera creciente — pero si la cuota agotada 
 DIARIA de un tier gratuito (ej. Gemini free tier: 20 solicitudes/día), estos tests
 seguirán fallando hasta el día siguiente sin importar el reintento.
 
+Cada test que ejercita la cascada real hace COMO MÁXIMO una llamada real al LLM
+por resultado que necesita validar: cuando un test necesita un antecedente en la
+BD (ej. una norma vigente para poder derogarla), esa precondición se inserta
+directamente con SQL (`_insertar_norma_vigente_precondicion`) en vez de crearla
+con una segunda llamada real al agente. Encadenar dos llamadas reales por test
+gastaría el doble de cuota y haría que el resultado dependiera también del
+comportamiento no determinista de una llamada que no es el objetivo del test.
+Cada test usa además su propio `nro_resolucion` y, cuando aplica, su propia
+especie/objeto — nunca los mismos valores que otro test — para que ninguno
+encuentre por accidente los datos que otro test dejó en la misma BD de prueba
+compartida por la sesión (`buscar_normas`/`buscar_normas_por_resolucion` no
+distinguen "de qué test" viene una fila).
+
 Casos base tomados de la sección 3.2 del PoC (`docs/PoCNormasPesqueras.ipynb`),
 adaptados a las diferencias del MVP frente al PoC:
   - `procesar_resolucion()` ya NO recibe `nro_resolucion` como parámetro: el agente
@@ -110,6 +123,77 @@ def _procesar_con_reintento(event_loop_compartido, **kwargs):
             espera_seg *= 2
 
 
+def _insertar_norma_vigente_precondicion(
+    engine,
+    *,
+    nro_resolucion: str,
+    hash_pdf: str,
+    objeto: str,
+    accion: str,
+    lugar: str,
+    vigencia_inicio: str,
+    vigencia_fin: str | None,
+    fecha_publicacion: str,
+    descripcion: str,
+    actores: str = "",
+) -> int:
+    """Inserta directamente en la BD (sin pasar por el agente) el estado que se
+    asume ya existente ANTES de la llamada real que el test quiere ejercitar —
+    el equivalente exacto de lo que `crear_norma` habría persistido.
+
+    Por qué: cuando lo único que un test necesita validar es el resultado de UNA
+    llamada real al LLM (ej. "¿el agente deroga correctamente una norma vigente?"),
+    encadenar una primera llamada real solo para preparar esa precondición malgasta
+    cuota de API y —peor— hace que el resultado del test dependa también de que esa
+    primera llamada no determinista se comporte como se espera. Preparar la
+    precondición con INSERTs deterministas aísla el test a la única llamada que
+    realmente le importa.
+
+    Devuelve el `norma_id` insertado.
+    """
+    with engine.begin() as conn:
+        doc_id = conn.execute(
+            text(
+                """
+                INSERT INTO documentos (nro_resolucion, hash_pdf, url_fuente, fecha_publicacion, tipo)
+                VALUES (:nro, :hash, '', :fecha, 'resolucion')
+                RETURNING id
+                """
+            ),
+            {"nro": nro_resolucion, "hash": hash_pdf, "fecha": fecha_publicacion},
+        ).scalar_one()
+
+        norma_id = conn.execute(
+            text(
+                """
+                INSERT INTO normas_actuales
+                    (actores, objeto, accion, lugar, vigencia_inicio, vigencia_fin, estado, datos_dinamicos)
+                VALUES (:actores, :objeto, :accion, :lugar, :v_ini, :v_fin, 'vigente', '{}')
+                RETURNING id
+                """
+            ),
+            {
+                "actores": actores,
+                "objeto": objeto,
+                "accion": accion,
+                "lugar": lugar,
+                "v_ini": vigencia_inicio,
+                "v_fin": vigencia_fin,
+            },
+        ).scalar_one()
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO linea_tiempo_normas (norma_id, documento_id, fecha_cambio, tipo_cambio, descripcion)
+                VALUES (:norma, :doc, CURRENT_DATE, 'crea', :desc)
+                """
+            ),
+            {"norma": norma_id, "doc": doc_id, "desc": descripcion},
+        )
+    return norma_id
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Caso feliz
 # ─────────────────────────────────────────────────────────────────────────────
@@ -158,27 +242,40 @@ def test_caso_feliz_crea_norma_con_datos_completos(mcp_de_prueba, event_loop_com
 
 @pytest.mark.skipif(not _TIENE_CLAVES_LLM, reason=_RAZON_FALTA_CLAVES_LLM)
 def test_caso_feliz_deroga_norma_referenciada_por_numero_de_resolucion(mcp_de_prueba, event_loop_compartido):
-    """Caso exclusivo del MVP (no existía en el PoC): una segunda resolución deroga
-    la primera citándola por su número ("R.M. 067-2025-PRODUCE"). El agente debe
-    usar `buscar_normas_por_resolucion` (no `buscar_normas` por objeto/zona) para
-    ubicar la norma exacta y llamar `derogar_norma` — verificado consultando el
-    estado real en la BD, no solo el texto de la respuesta."""
-    texto_original = (
-        "RESOLUCIÓN MINISTERIAL N° 067-2025-PRODUCE. Lima, 12 febrero 2025. "
-        "Se establece la cuota global de captura de merluza (Merluccius gayi peruanus) "
-        "para la temporada 2025, correspondiente a 30,000 toneladas métricas. "
-        "Zona de pesca: litoral peruano entre los 03°30'S y 16°00'S. "
-        "Vigencia: desde el 15 de febrero hasta el 15 de agosto de 2025."
-    )
-    h_original = _hash_unico(texto_original, "caso_feliz_deroga_original")
-    _procesar_con_reintento(
-        event_loop_compartido, texto=texto_original, hash_pdf=h_original, fecha_publicacion="2025-02-12"
+    """Caso exclusivo del MVP (no existía en el PoC): una resolución deroga otra
+    citándola por su número ("R.M. 070-2025-PRODUCE"). El agente debe usar
+    `buscar_normas_por_resolucion` (no `buscar_normas` por objeto/zona) para ubicar
+    la norma exacta y llamar `derogar_norma` — verificado consultando el estado
+    real en la BD, no solo el texto de la respuesta.
+
+    La norma original NO se crea con una llamada real al agente: se inserta
+    directamente como precondición (`_insertar_norma_vigente_precondicion`) para
+    que este test dependa de una única llamada real al LLM — la derogación, que es
+    lo único que efectivamente se está probando — en vez de encadenar dos.
+    Usa un nro_resolucion propio ("070", no "067") y una especie distinta (pota,
+    no merluza) para no colisionar con el documento real que crea
+    `test_caso_feliz_crea_norma_con_datos_completos` en la misma BD de prueba
+    compartida por la sesión (ni por número de resolución ni por objeto/especie).
+    """
+    nro_original = "R.M. 070-2025-PRODUCE"
+    hash_original = _hash_unico(nro_original, "caso_feliz_deroga_precondicion")
+    _insertar_norma_vigente_precondicion(
+        mcp_de_prueba,
+        nro_resolucion=nro_original,
+        hash_pdf=hash_original,
+        objeto="pota (Dosidicus gigas)",
+        accion="cuota",
+        lugar="zona económica exclusiva del mar peruano",
+        vigencia_inicio="2025-02-15",
+        vigencia_fin="2025-08-15",
+        fecha_publicacion="2025-02-12",
+        descripcion="Creación de cuota de captura de pota — precondición de test, no vía agente.",
     )
 
     texto_derogatorio = (
         "RESOLUCIÓN MINISTERIAL N° 099-2025-PRODUCE. Lima, 20 agosto 2025. "
-        "Se deroga la cuota de captura de merluza establecida por la "
-        "R.M. 067-2025-PRODUCE, al haberse alcanzado el límite autorizado."
+        "Se deroga la cuota de captura de pota establecida por la "
+        "R.M. 070-2025-PRODUCE, al haberse alcanzado el límite autorizado."
     )
     h_derogatorio = _hash_unico(texto_derogatorio, "caso_feliz_deroga_derogatorio")
 
@@ -199,7 +296,7 @@ def test_caso_feliz_deroga_norma_referenciada_por_numero_de_resolucion(mcp_de_pr
                 WHERE d.hash_pdf = :hash
                 """
             ),
-            {"hash": h_original},
+            {"hash": hash_original},
         ).mappings().first()
 
     assert norma is not None

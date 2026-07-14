@@ -1,6 +1,8 @@
 # Referencias de contexto / revisión (locales, no se suben al repo)
 docs
 REVIEW_CHECKLIST.md
+TESTS_CHECKLIST.md
+EVALUACION_CHECKLIST.md
 
 # Entorno y secretos
 .env
