@@ -44,6 +44,24 @@ class ProcesarUrlRequest(BaseModel):
     fecha_publicacion: str = ""
 
 
+_MENSAJE_SERVICIO_NO_DISPONIBLE = (
+    "Servicio de procesamiento no disponible en este momento. Intenta nuevamente más tarde."
+)
+
+
+async def _procesar_o_503(**kwargs) -> dict:
+    """Envuelve procesar_resolucion: si el servidor MCP, la BD o algún modelo de la cascada
+    fallan (ej. MCP caído), la UI recibe un error de servicio genérico en vez de una
+    excepción cruda sin manejar — que podría exponer detalles internos (cadenas de
+    conexión, hosts, etc.) o tumbar la request con un 500 sin explicación.
+    """
+    try:
+        return await procesar_resolucion(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        print(f"Error interno en procesar_resolucion: {e}")
+        raise HTTPException(status_code=503, detail=_MENSAJE_SERVICIO_NO_DISPONIBLE) from e
+
+
 @app.post("/api/procesar/texto")
 async def procesar_texto(req: ProcesarTextoRequest) -> dict:
     """Procesa una resolución a partir de texto ya extraído (uso principal: demos y pruebas).
@@ -51,7 +69,7 @@ async def procesar_texto(req: ProcesarTextoRequest) -> dict:
     El nro_resolucion NO se pide aquí: el agente extractor lo identifica del propio texto.
     """
     h = calcular_hash(req.texto.encode())
-    return await procesar_resolucion(
+    return await _procesar_o_503(
         texto=req.texto,
         hash_pdf=h,
         url_fuente=req.url_fuente,
@@ -71,7 +89,7 @@ async def procesar_url(req: ProcesarUrlRequest) -> dict:
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"No se pudo procesar el PDF: {e}") from e
 
-    return await procesar_resolucion(
+    return await _procesar_o_503(
         texto=texto,
         hash_pdf=h,
         url_fuente=req.url,
@@ -93,7 +111,7 @@ async def procesar_pdf(archivo: UploadFile = File(...), fecha_publicacion: str =
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"No se pudo procesar el PDF: {e}") from e
 
-    return await procesar_resolucion(
+    return await _procesar_o_503(
         texto=texto,
         hash_pdf=h,
         url_fuente=archivo.filename or "",

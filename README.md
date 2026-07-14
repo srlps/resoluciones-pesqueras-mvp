@@ -34,7 +34,10 @@ resoluciones-pesqueras-mvp/
 │   └── datos_demo.csv    # Resoluciones de ejemplo (texto simulado, sin datos reales)
 │
 └── tests/
-    └── test_smoke.py     # Prueba de humo: schemas + import de la app
+    ├── conftest.py               # Fixture: levanta mcp_server.py + BD Postgres descartable
+    ├── test_smoke.py             # Prueba de humo: casos rápidos/mínimos/felices
+    └── test_casos_aceptacion.py  # 5 casos de aceptación de la rúbrica (feliz, límite,
+                                   # fuera de alcance, tool inválida, MCP no disponible)
 ```
 
 ### Mapeo con la estructura sugerida por el curso
@@ -85,3 +88,14 @@ resoluciones-pesqueras-mvp/
   ```powershell
   pytest tests/
   ```
+  `test_smoke.py` corre siempre (no requiere credenciales ni Postgres real).
+  `test_casos_aceptacion.py` cubre los 5 casos mínimos que exige la rúbrica del
+  curso (feliz, límite, fuera de alcance, tool inválida, MCP no disponible); los
+  casos que ejercitan al agente extractor completo (feliz y límite, más "fuera de
+  alcance" que solo necesita el clasificador) usan la fixture `mcp_de_prueba`
+  (`conftest.py`), que levanta el propio `mcp_server.py` en un hilo de fondo
+  contra una base PostgreSQL descartable (`<db>_test`, recreada en cada sesión de
+  pytest) — **no hace falta tener `python mcp_server.py` corriendo a mano**, solo
+  un servidor PostgreSQL alcanzable (mismo host/credenciales que `DATABASE_URL`)
+  y `GOOGLE_API_KEY`/`MISTRAL_API_KEY`. Se saltan automáticamente (`SKIPPED`) si
+  algo de eso no está disponible.

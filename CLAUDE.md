@@ -110,6 +110,61 @@ explícitamente.** El MVP es intencionalmente plano — es para aprendizaje/demo
   sin pasar por una URL. `static/index.html`/`app.js`/`style.css`: reemplazado el formulario
   único por 3 pestañas (Texto / URL / Subir PDF) sin campo de N° de resolución, cada una
   llamando a su endpoint correspondiente (JSON para texto/url, `FormData` para pdf).
+- **2026-07-13** — `static/style.css`: corregido bug de renderizado en las 3 pestañas
+  (Texto/URL/Subir PDF) — las 3 aparecían apiladas simultáneamente en vez de alternar.
+  Causa: la regla `form { display: flex; ... }` (CSS de autor) pisa el comportamiento
+  por defecto de `[hidden]` del navegador (CSS de user-agent), sin importar
+  especificidad. Se agregó `form[hidden] { display: none; }` justo después de la
+  regla base de `form` para restaurar el comportamiento esperado.
+- **2026-07-13** — Nuevos tests de aceptación, separados del smoke test:
+  `tests/test_casos_aceptacion.py` cubre los 5 casos mínimos exigidos por la rúbrica
+  del curso (caso feliz, caso límite, fuera de alcance, tool inválida, MCP no
+  disponible), reutilizando y adaptando los casos del PoC (sección 3.2 del notebook)
+  a las diferencias del MVP (sin `nro_resolucion` como parámetro de
+  `procesar_resolucion`; `buscar_normas`/`buscar_normas_por_resolucion` en vez de SQL
+  libre; DLQ persistida en `dlq_documentos` en vez de una lista en memoria). Incluye
+  un caso exclusivo del MVP (derogación de una norma referenciada por número de
+  resolución, vía `buscar_normas_por_resolucion`, tool que no existía en el PoC). Los
+  casos feliz/límite ejecutan la cascada real (requieren credenciales + Postgres +
+  `mcp_server.py` corriendo) y se saltan automáticamente si esa infraestructura no
+  está disponible; fuera de alcance/tool inválida/MCP no disponible corren siempre
+  (los dos últimos no dependen de red ni BD real). `app.py`: para soportar el caso
+  "MCP no disponible" de forma real (antes un fallo del agente extractor se
+  propagaba como una excepción sin manejar), se agregó el helper `_procesar_o_503`
+  que envuelve las 3 llamadas a `procesar_resolucion` y convierte cualquier falla
+  interna (MCP caído, BD inalcanzable, error del modelo) en un `503` con un mensaje
+  genérico, sin exponer el detalle de la excepción original (que podría contener
+  cadenas de conexión). `tests/test_smoke.py`: agregadas 2 verificaciones
+  estructurales rápidas (las 3 rutas de procesamiento siguen registradas en `app.py`;
+  `mcp_server.py` sigue exponiendo las 7 tools esperadas como funciones invocables),
+  sin agregar nada que dependa de red o BD real.
+- **2026-07-13** — Nuevo `tests/conftest.py`: fixture `mcp_de_prueba` que levanta el
+  propio `mcp_server.py` en un hilo de fondo (puerto 8766, distinto del real 8765)
+  contra una base PostgreSQL descartable (`<db>_test`, recreada con DROP+CREATE al
+  inicio de cada sesión de pytest) — **ya no hace falta tener `python mcp_server.py`
+  corriendo a mano** para los casos feliz/límite/fuera de alcance de
+  `test_casos_aceptacion.py` (supera lo dicho en la entrada anterior); solo se
+  necesita un servidor PostgreSQL alcanzable (mismo host/credenciales que
+  `DATABASE_URL`) + las API keys. No es una BD "en memoria" real (Postgres no
+  soporta eso y el esquema usa JSONB/`CAST(...AS jsonb)`/`ON CONFLICT`, sintaxis que
+  SQLite no entiende sin reescribir el SQL de producción) — es el equivalente
+  práctico: descartable y aislada de `DATABASE_URL`. La fixture redirige
+  `mcp_server.engine` y `agent.engine` a la BD de prueba y reapunta
+  `agent._mcp_client` al puerto de test (reseteando `agent._agente_extractor` para
+  que se reconstruya contra él). También se agregó la fixture
+  `event_loop_compartido` (un único asyncio event loop para toda la sesión): en
+  Windows, llamar `asyncio.run()` una vez por test con los clientes httpx async
+  compartidos de `gemini_flash`/`mistral_large` (singletons de módulo en `agent.py`)
+  rompe con `RuntimeError: Event loop is closed` al segundo uso — no ocurre en
+  producción, donde uvicorn mantiene un único loop para todo el proceso.
+  `test_casos_aceptacion.py`: los 4 tests que llaman `procesar_resolucion` ahora
+  pasan por `_procesar_con_reintento()`, que reintenta con espera creciente ante un
+  429 (rate limit) de Mistral o Gemini — detectado por texto del error, no por tipo
+  de excepción, para no acoplarse a las clases internas de cada SDK. Si la cuota
+  agotada es la diaria de un tier gratuito (ej. Gemini free tier: 20 solicitudes/
+  día), el reintento no ayuda y los tests seguirán fallando hasta el día siguiente;
+  esto se documentó en el docstring del módulo para no confundirlo con un bug del
+  pipeline.
 
 > Actualiza esta sección con una entrada nueva cada vez que completes un cambio
 > estructural o funcional relevante (nuevo archivo, cambio de contrato, nueva feature).
