@@ -75,7 +75,10 @@ resoluciones-pesqueras-mvp/
 
 ## Evaluar el MVP
 
-- Pega el texto de una resolución (o usa un caso de [data/datos_demo.csv](data/datos_demo.csv)) en el formulario de la web.
+- Procesa una resolución desde la web (`http://127.0.0.1:8000`) por cualquiera de sus 3 modos:
+  texto pegado, URL de un PDF de PRODUCE, o subiendo un PDF directamente (puedes usar un caso
+  de [data/datos_demo.csv](data/datos_demo.csv) para el modo texto). El N° de resolución no se
+  ingresa en el formulario: el agente extractor lo identifica del propio contenido del documento.
 - Revisa la **línea de tiempo de normas** para confirmar que se creó/actualizó/derogó correctamente.
 - Revisa la **Dead Letter Queue** para casos de confianza baja o ambigüedad legal (política de "nunca inventar").
 - Ejecutar pruebas de humo:

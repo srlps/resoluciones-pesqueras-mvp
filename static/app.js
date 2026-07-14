@@ -2,11 +2,28 @@
 
 const $ = (sel) => document.querySelector(sel);
 
-async function procesarResolucion(payload) {
+async function procesarTexto(payload) {
   const resp = await fetch("/api/procesar/texto", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+  return resp.json();
+}
+
+async function procesarUrl(payload) {
+  const resp = await fetch("/api/procesar/url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return resp.json();
+}
+
+async function procesarPdf(formData) {
+  const resp = await fetch("/api/procesar/pdf", {
+    method: "POST",
+    body: formData,
   });
   return resp.json();
 }
@@ -20,16 +37,62 @@ function mostrarResultado(data) {
   else div.classList.add("error");
 }
 
-$("#form-procesar").addEventListener("submit", async (e) => {
+// ── Tabs: alterna entre los 3 modos de procesamiento (texto / url / pdf) ────
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".form-modo").forEach((form) => {
+      form.hidden = form.dataset.modo !== btn.dataset.modo;
+    });
+  });
+});
+
+$("#form-texto").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const form = e.target;
   const payload = {
-    nro_resolucion: $("#nro_resolucion").value,
-    fecha_publicacion: $("#fecha_publicacion").value,
-    texto: $("#texto").value,
+    texto: form.texto.value,
+    fecha_publicacion: form.fecha_publicacion.value,
   };
   mostrarResultado({ estado: "procesando..." });
   try {
-    const data = await procesarResolucion(payload);
+    const data = await procesarTexto(payload);
+    mostrarResultado(data);
+    cargarNormas();
+    cargarDlq();
+  } catch (err) {
+    mostrarResultado({ estado: "error", detalle: String(err) });
+  }
+});
+
+$("#form-url").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const payload = {
+    url: form.url.value,
+    fecha_publicacion: form.fecha_publicacion.value,
+  };
+  mostrarResultado({ estado: "procesando..." });
+  try {
+    const data = await procesarUrl(payload);
+    mostrarResultado(data);
+    cargarNormas();
+    cargarDlq();
+  } catch (err) {
+    mostrarResultado({ estado: "error", detalle: String(err) });
+  }
+});
+
+$("#form-pdf").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const formData = new FormData();
+  formData.append("archivo", form.archivo.files[0]);
+  formData.append("fecha_publicacion", form.fecha_publicacion.value);
+  mostrarResultado({ estado: "procesando..." });
+  try {
+    const data = await procesarPdf(formData);
     mostrarResultado(data);
     cargarNormas();
     cargarDlq();

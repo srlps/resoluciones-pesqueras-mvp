@@ -7,9 +7,10 @@ servido directamente por FastAPI.
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -22,35 +23,37 @@ from pdf_service import cargar_pdf_desde_url, calcular_hash, extraer_texto_pdf
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="Asistente de Actualizaciones Pesqueras — MVP")
 
-
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
     init_db()
+    yield
+
+
+app = FastAPI(title="Asistente de Actualizaciones Pesqueras — MVP", lifespan=_lifespan)
 
 
 class ProcesarTextoRequest(BaseModel):
     texto: str
-    nro_resolucion: str
     fecha_publicacion: str = ""
     url_fuente: str = ""
 
 
 class ProcesarUrlRequest(BaseModel):
     url: str
-    nro_resolucion: str
     fecha_publicacion: str = ""
 
 
 @app.post("/api/procesar/texto")
 async def procesar_texto(req: ProcesarTextoRequest) -> dict:
-    """Procesa una resolución a partir de texto ya extraído (uso principal: demos y pruebas)."""
+    """Procesa una resolución a partir de texto ya extraído (uso principal: demos y pruebas).
+
+    El nro_resolucion NO se pide aquí: el agente extractor lo identifica del propio texto.
+    """
     h = calcular_hash(req.texto.encode())
     return await procesar_resolucion(
         texto=req.texto,
         hash_pdf=h,
-        nro_resolucion=req.nro_resolucion,
         url_fuente=req.url_fuente,
         fecha_publicacion=req.fecha_publicacion,
     )
@@ -58,7 +61,10 @@ async def procesar_texto(req: ProcesarTextoRequest) -> dict:
 
 @app.post("/api/procesar/url")
 async def procesar_url(req: ProcesarUrlRequest) -> dict:
-    """Descarga el PDF desde una URL de PRODUCE, extrae texto y ejecuta la cascada."""
+    """Descarga el PDF desde una URL de PRODUCE, extrae texto y ejecuta la cascada.
+
+    El nro_resolucion NO se pide aquí: el agente extractor lo identifica del propio texto.
+    """
     try:
         contenido, h = cargar_pdf_desde_url(req.url)
         texto = extraer_texto_pdf(contenido)
@@ -68,9 +74,30 @@ async def procesar_url(req: ProcesarUrlRequest) -> dict:
     return await procesar_resolucion(
         texto=texto,
         hash_pdf=h,
-        nro_resolucion=req.nro_resolucion,
         url_fuente=req.url,
         fecha_publicacion=req.fecha_publicacion,
+        pdf_bytes=contenido,
+    )
+
+
+@app.post("/api/procesar/pdf")
+async def procesar_pdf(archivo: UploadFile = File(...), fecha_publicacion: str = "") -> dict:
+    """Procesa una resolución a partir de un PDF subido directamente desde la interfaz.
+
+    El nro_resolucion NO se pide aquí: el agente extractor lo identifica del propio texto.
+    """
+    try:
+        contenido = await archivo.read()
+        h = calcular_hash(contenido)
+        texto = extraer_texto_pdf(contenido)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo procesar el PDF: {e}") from e
+
+    return await procesar_resolucion(
+        texto=texto,
+        hash_pdf=h,
+        url_fuente=archivo.filename or "",
+        fecha_publicacion=fecha_publicacion,
         pdf_bytes=contenido,
     )
 

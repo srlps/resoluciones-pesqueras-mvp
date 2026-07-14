@@ -15,21 +15,53 @@
   <main>
     <section id="procesar">
       <h2>Procesar resolución</h2>
-      <form id="form-procesar">
-        <label>
-          N° de resolución
-          <input type="text" id="nro_resolucion" placeholder="R.M. 234-2025-PRODUCE" required />
-        </label>
+      <p class="nota">
+        El N° de resolución no se ingresa aquí: el agente extractor lo identifica
+        automáticamente del propio contenido del documento.
+      </p>
+
+      <div class="tabs" id="tabs-modo">
+        <button type="button" class="tab-btn active" data-modo="texto">Texto</button>
+        <button type="button" class="tab-btn" data-modo="url">URL de documento</button>
+        <button type="button" class="tab-btn" data-modo="pdf">Subir PDF</button>
+      </div>
+
+      <form id="form-texto" class="form-modo" data-modo="texto">
         <label>
           Fecha de publicación
-          <input type="date" id="fecha_publicacion" />
+          <input type="date" name="fecha_publicacion" />
         </label>
         <label>
           Texto de la resolución
-          <textarea id="texto" rows="8" placeholder="Pega aquí el texto de la resolución..." required></textarea>
+          <textarea name="texto" rows="8" placeholder="Pega aquí el texto de la resolución..." required></textarea>
         </label>
         <button type="submit">Procesar</button>
       </form>
+
+      <form id="form-url" class="form-modo" data-modo="url" hidden>
+        <label>
+          URL del documento (PDF de PRODUCE)
+          <input type="url" name="url" placeholder="https://..." required />
+        </label>
+        <label>
+          Fecha de publicación
+          <input type="date" name="fecha_publicacion" />
+        </label>
+        <button type="submit">Procesar</button>
+      </form>
+
+      <form id="form-pdf" class="form-modo" data-modo="pdf" hidden>
+        <label>
+          Archivo PDF
+          <input type="file" name="archivo" accept="application/pdf" required />
+        </label>
+        <label>
+          Fecha de publicación
+          <input type="date" name="fecha_publicacion" />
+        </label>
+        <button type="submit">Procesar</button>
+      </form>
+
       <div id="resultado" class="resultado"></div>
     </section>
 

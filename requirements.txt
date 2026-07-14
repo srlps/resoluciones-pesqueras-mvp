@@ -14,6 +14,7 @@ langchain-mcp-adapters
 # Web: API + servido de HTML estático
 fastapi
 uvicorn[standard]
+python-multipart  # requerido por FastAPI para recibir archivos (UploadFile) en /api/procesar/pdf
 
 # Ingesta y parseo de PDFs
 httpx

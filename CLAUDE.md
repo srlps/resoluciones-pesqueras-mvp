@@ -96,6 +96,20 @@ explícitamente.** El MVP es intencionalmente plano — es para aprendizaje/demo
   `/api/procesar/texto`, sin PDF, no puede activarlo). `pdf_service.py` y
   `requirements.txt` quedan sin cambios (no se necesita rasterizar páginas ni
   PyMuPDF; Gemini procesa el PDF directamente).
+- **2026-07-13** — La interfaz web ahora tiene 3 formas de procesar (antes solo texto), y
+  `nro_resolucion` ya no lo ingresa el usuario: el agente extractor lo identifica del propio
+  texto de la resolución (nunca como metadato). `prompts.py`: `EXTRACCION_SYSTEM_PROMPT` tiene
+  un nuevo PASO 1 explícito para extraer nro_resolucion del texto (si no aparece, usa "N/D" —
+  eso NO baja la confianza por sí solo, solo indica que el documento es un comunicado u otro
+  tipo distinto a una resolución; la confianza depende únicamente de qué tan ciertos son los
+  campos normativos); los pasos siguientes se renumeraron. `agent.py`:
+  `procesar_resolucion()` ya no recibe `nro_resolucion` como parámetro; `contexto_doc` aclara
+  al agente que debe extraerlo él mismo. `app.py`: `ProcesarTextoRequest`/`ProcesarUrlRequest`
+  perdieron el campo `nro_resolucion`; nuevo endpoint `POST /api/procesar/pdf` (`UploadFile`,
+  requiere `python-multipart` — agregado a `requirements.txt`) para subir un PDF directamente
+  sin pasar por una URL. `static/index.html`/`app.js`/`style.css`: reemplazado el formulario
+  único por 3 pestañas (Texto / URL / Subir PDF) sin campo de N° de resolución, cada una
+  llamando a su endpoint correspondiente (JSON para texto/url, `FormData` para pdf).
 
 > Actualiza esta sección con una entrada nueva cada vez que completes un cambio
 > estructural o funcional relevante (nuevo archivo, cambio de contrato, nueva feature).

@@ -86,7 +86,6 @@ async def _get_agente_extractor():
 async def procesar_resolucion(
     texto: str,
     hash_pdf: str,
-    nro_resolucion: str,
     url_fuente: str = "",
     fecha_publicacion: str = "",
     tipo: str = "resolucion",
@@ -99,14 +98,18 @@ async def procesar_resolucion(
     1.b Si requiere_multimodal y se recibió `pdf_bytes`, envía el PDF completo + el texto ya
         extraído a Gemini Flash (soporte nativo de archivos PDF) para que devuelva el documento
         completo enriquecido en Markdown, y reclasifica con ese texto.
-    2. Si relevante, agente extractor (Mistral + tools MCP) → consulta BD, decide
-       crear/actualizar/derogar, extrae y persiste autónomamente.
+    2. Si relevante, agente extractor (Mistral + tools MCP) → extrae el nro_resolucion del
+       propio texto, consulta BD, decide crear/actualizar/derogar, extrae y persiste autónomamente.
+
+    `nro_resolucion` NO se recibe como parámetro: el agente extractor lo identifica del
+    propio texto de la resolución (PASO 1 de `EXTRACCION_SYSTEM_PROMPT`), nunca como metadato
+    dado por el usuario.
 
     `pdf_bytes` es opcional: sin él (ej. `/api/procesar/texto`, demos con texto ya
     extraído) el fallback multimodal no puede ejecutarse y el documento queda
     'pendiente_multimodal' para reprocesarse luego con el PDF original.
     """
-    r = {"nro_resolucion": nro_resolucion, "hash": hash_pdf[:16] + "..."}
+    r = {"hash": hash_pdf[:16] + "..."}
 
     with engine.connect() as conn:
         dup = conn.execute(text("SELECT id FROM documentos WHERE hash_pdf=:hash"), {"hash": hash_pdf}).fetchone()
@@ -144,8 +147,9 @@ async def procesar_resolucion(
 
     agente = await _get_agente_extractor()
     contexto_doc = (
-        f"nro_resolucion={nro_resolucion}, hash_pdf={hash_pdf}, "
-        f"url_fuente={url_fuente or 'N/A'}, fecha_publicacion={fecha_publicacion or 'N/A'}, tipo={tipo}"
+        f"hash_pdf={hash_pdf}, url_fuente={url_fuente or 'N/A'}, "
+        f"fecha_publicacion={fecha_publicacion or 'N/A'}, tipo={tipo} "
+        "(nro_resolucion NO se entrega aquí: extráelo tú mismo del texto de la resolución)"
     )
     respuesta = await agente.ainvoke(
         {
